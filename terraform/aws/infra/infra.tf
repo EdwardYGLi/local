@@ -1,62 +1,4 @@
-terraform {
-  required_providers {
-    aws = "~> 3.37.0"
-  }
-}
 
-provider "aws" {
-  region = var.aws_region
-}
-
-##########################################
-# Variables
-##########################################
-
-variable "global_environment_name" {
-  description = "A globally unique environment name for S3 buckets."
-  type        = string
-}
-
-variable "aws_region" {
-  description = "The AWS region in which to place the resources."
-  type        = string
-  default     = "us-west-2"
-}
-
-variable "db_password" {
-  description = "Password for the database instance. NOTE: Database is not publicly accessible by default."
-  type        = string
-}
-
-variable "deployment_is_private" {
-  description = "If true, the load balancer will be placed in a private subnet, and the kubernetes API server endpoint will be private."
-  type        = bool
-  default     = false
-}
-
-variable "kubernetes_api_is_private" {
-  description = "If true, the kubernetes API server endpoint will be private."
-  type        = bool
-  default     = false
-}
-
-variable "vpc_cidr_block" {
-  description = "CIDR block for the VPC."
-  type        = string
-  default     = "10.10.0.0/16"
-}
-
-variable "public_subnet_cidr_blocks" {
-  description = "CIDR blocks for the public VPC subnets. Should be a list of 2 CIDR blocks."
-  type        = list(string)
-  default     = ["10.10.0.0/24", "10.10.1.0/24"]
-}
-
-variable "private_subnet_cidr_blocks" {
-  description = "CIDR blocks for the private VPC subnets. Should be a list of 2 CIDR blocks."
-  type        = list(string)
-  default     = ["10.10.2.0/24", "10.10.3.0/24"]
-}
 
 ##########################################
 # Data
@@ -69,129 +11,13 @@ data "aws_availability_zones" "available" {
 }
 
 ##########################################
-# VPC resources
-##########################################
-
-resource "aws_vpc" "wandb" {
-  cidr_block           = var.vpc_cidr_block
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-  tags = {
-    "Name"                        = "wandb"
-    "kubernetes.io/cluster/wandb" = "shared"
-  }
-}
-
-resource "aws_subnet" "wandb_public" {
-  count = 2
-
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  cidr_block              = var.public_subnet_cidr_blocks[count.index]
-  vpc_id                  = aws_vpc.wandb.id
-  map_public_ip_on_launch = true
-
-  tags = {
-    "Name"                        = "wandb-public-${count.index}"
-    "kubernetes.io/cluster/wandb" = "shared"
-  }
-}
-
-resource "aws_subnet" "wandb_private" {
-  count = 2
-
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-  cidr_block        = var.private_subnet_cidr_blocks[count.index]
-  vpc_id            = aws_vpc.wandb.id
-
-  depends_on = [aws_subnet.wandb_public]
-
-  tags = {
-    "Name"                        = "wandb-private-${count.index}"
-    "kubernetes.io/cluster/wandb" = "shared"
-  }
-}
-
-resource "aws_eip" "wandb" {
-  count = 2
-
-  vpc = true
-
-  tags = {
-    Name = "wandb-eip-${count.index}"
-  }
-}
-
-resource "aws_nat_gateway" "wandb" {
-  count = 2
-
-  allocation_id = aws_eip.wandb[count.index].id
-  subnet_id     = aws_subnet.wandb_public[count.index].id
-
-  depends_on = [aws_internet_gateway.wandb]
-
-  tags = {
-    Name = "wandb-nat-gateway-${count.index}"
-  }
-}
-resource "aws_internet_gateway" "wandb" {
-  vpc_id = aws_vpc.wandb.id
-
-  tags = {
-    Name = "wandb-gateway"
-  }
-}
-
-resource "aws_route_table" "wandb_public" {
-  vpc_id = aws_vpc.wandb.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.wandb.id
-  }
-
-  tags = {
-    Name = "wandb-route-table-public"
-  }
-}
-
-resource "aws_route_table_association" "wandb_public" {
-  count = 2
-
-  subnet_id      = aws_subnet.wandb_public[count.index].id
-  route_table_id = aws_route_table.wandb_public.id
-}
-
-resource "aws_route_table" "wandb_private" {
-  count = 2
-
-  vpc_id = aws_vpc.wandb.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.wandb[count.index].id
-  }
-
-  tags = {
-    Name = "wandb-route-table-private-${count.index}"
-  }
-}
-
-resource "aws_route_table_association" "wandb_private" {
-  count = 2
-
-  subnet_id      = aws_subnet.wandb_private[count.index].id
-  route_table_id = aws_route_table.wandb_private[count.index].id
-}
-
-##########################################
 # EKS resources
 ##########################################
 
 resource "aws_security_group" "eks_master" {
   name        = "wandb-eks-master"
   description = "Cluster communication with worker nodes"
-  vpc_id      = aws_vpc.wandb.id
+  vpc_id      = var.wandb_vpc_id
 
   egress {
     from_port   = 0
@@ -212,9 +38,9 @@ resource "aws_eks_cluster" "wandb" {
 
   vpc_config {
     endpoint_private_access = true
-    endpoint_public_access  = ! var.kubernetes_api_is_private
+    endpoint_public_access  = false
     security_group_ids      = [aws_security_group.eks_master.id]
-    subnet_ids              = aws_subnet.wandb_private[*].id
+    subnet_ids              = var.private_subnet_ids
   }
 
   depends_on = [
@@ -240,13 +66,23 @@ output "eks_cert_data" {
 }
 
 resource "aws_security_group_rule" "eks_worker_ingress" {
-  description              = "Allow comntainer NodePort service to receive load balancer traffic"
+  description              = "Allow container NodePort service to receive load balancer traffic"
   protocol                 = "tcp"
   security_group_id        = aws_eks_cluster.wandb.vpc_config[0].cluster_security_group_id
   source_security_group_id = aws_security_group.wandb_alb.id
   from_port                = 32543
   to_port                  = 32543
   type                     = "ingress"
+}
+
+resource "aws_security_group_rule" "wandb_ingress" {
+  description = "Allow internal traffic"
+  protocol = "tcp"
+  security_group_id = aws_eks_cluster.wandb.vpc_config[0].cluster_security_group_id
+  from_port = 443
+  to_port = 443
+  cidr_blocks = var.wandb_ingress_ips
+  type = "ingress"
 }
 
 resource "aws_iam_role" "wandb_cluster_role" {
@@ -345,7 +181,7 @@ resource "aws_iam_policy" "wandb_node_sqs_policy" {
         "Effect": "Allow",
         "Action": "sqs:*",
         "Resource": [
-          "${aws_sqs_queue.file_metadata.arn}"
+          "${aws_sqs_queue.file_metadata.arn}","*"
         ]
     }
   ]
@@ -362,7 +198,7 @@ resource "aws_eks_node_group" "eks_worker_node_group" {
   cluster_name    = aws_eks_cluster.wandb.name
   node_group_name = "wandb-eks-node-group"
   node_role_arn   = aws_iam_role.wandb_node_role.arn
-  subnet_ids      = aws_subnet.wandb_private[*].id
+  subnet_ids      = var.private_subnet_ids
 
   scaling_config {
     desired_size = 1
@@ -389,20 +225,20 @@ resource "aws_eks_node_group" "eks_worker_node_group" {
 resource "aws_security_group" "wandb_alb" {
   name        = "wandb-alb-sg"
   description = "Allow http(s) traffic to wandb"
-  vpc_id      = aws_vpc.wandb.id
+  vpc_id      = var.wandb_vpc_id
 
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.wandb_ingress_ips
   }
 
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.wandb_ingress_ips
   }
 
   egress {
@@ -419,10 +255,10 @@ resource "aws_security_group" "wandb_alb" {
 
 resource "aws_lb" "wandb" {
   name               = "wandb-alb"
-  internal           = var.deployment_is_private
+  internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.wandb_alb.id]
-  subnets            = var.deployment_is_private ? aws_subnet.wandb_private[*].id : aws_subnet.wandb_public[*].id
+  subnets            = var.private_subnet_ids
 }
 
 output "lb_dns_name" {
@@ -433,7 +269,7 @@ resource "aws_lb_target_group" "wandb_tg" {
   name     = "wandb-alb-tg"
   port     = 32543
   protocol = "HTTP"
-  vpc_id   = aws_vpc.wandb.id
+  vpc_id   = var.wandb_vpc_id
 
   health_check {
     protocol            = "HTTP"
@@ -467,9 +303,9 @@ resource "aws_autoscaling_attachment" "wandb" {
 
 resource "aws_sqs_queue" "file_metadata" {
   name = "wandb-file-metadata"
-
   # enable long-polling
   receive_wait_time_seconds = 10
+  kms_master_key_id = "alias/aws/sqs"
 }
 
 output "sqs_queue_name" {
@@ -503,6 +339,8 @@ data "aws_iam_policy_document" "file_metadata_queue_policy" {
 
 resource "aws_sns_topic" "file_metadata" {
   name = "wandb-file-metadata-topic"
+  kms_master_key_id = "alias/aws/sns"
+
 }
 
 resource "aws_sns_topic_policy" "file_metadata_topic_policy" {
@@ -563,6 +401,15 @@ resource "aws_s3_bucket" "file_storage" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "file_storage_public_access_block" {
+  bucket = aws_s3_bucket.file_storage.id
+
+  block_public_acls   = true
+  block_public_policy = true
+  ignore_public_acls = true
+  restrict_public_buckets = true
+}
+
 output "s3_bucket_name" {
   value = aws_s3_bucket.file_storage.bucket
 }
@@ -586,7 +433,7 @@ resource "aws_s3_bucket_notification" "file_metadata_sns" {
 
 resource "aws_db_subnet_group" "metadata_subnets" {
   name       = "wandb-db-subnets"
-  subnet_ids = aws_subnet.wandb_private[*].id
+  subnet_ids = var.private_rds_subnet_ids
 }
 
 resource "aws_rds_cluster" "metadata_cluster" {
@@ -625,7 +472,7 @@ output "rds_connection_string" {
 resource "aws_security_group" "metadata_store" {
   name        = "wandb-metadata-store"
   description = "Allow inbound traffic from workers to metadata store"
-  vpc_id      = aws_vpc.wandb.id
+  vpc_id      = var.wandb_vpc_id
 
   tags = {
     Name = "wandb-metadata-store"

@@ -1,0 +1,693 @@
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mnew file mode 100644[m
+[1mindex 0000000..010d1ad[m
+[1m--- /dev/null[m
+[1m+++ b/.gitignore[m
+[36m@@ -0,0 +1,4 @@[m
+[32m+[m[32m*terraform*[m
+[32m+[m[32m.terraform*[m
+[32m+[m[32mkubeconfig.yaml[m
+[32m+[m[32msensitive.json[m
+\ No newline at end of file[m
+[1mdiff --git a/README.md b/README.md[m
+[1mindex e6f9cf9..6161e51 100644[m
+[1m--- a/README.md[m
+[1m+++ b/README.md[m
+[36m@@ -1,6 +1,3 @@[m
+[31m-# Weights and Biases[m
+[31m-[m
+[31m-Repo to host weights and biases terraform install.[m
+ # Installing W&B Local in AWS[m
+ [m
+ This repo contains a terraform stack you can use to deploy your very own W&B Local instance into your AWS account.[m
+[36m@@ -57,4 +54,4 @@[m [mAfter install, terraform will generate a `terraform.tfstate` file. It is *extrem[m
+ After install, this terraform stack will output a `kubeconfig.yaml` file you can use to administer the cluster. Once the cluster is done installing, try running the following command to see pod status:[m
+ ```[m
+ kubectl --kubeconfig=kubeconfig.yaml get pods[m
+[31m-```[m
+\ No newline at end of file[m
+[32m+[m[32m```[m
+[1mdiff --git a/TODO.txt b/TODO.txt[m
+[1mnew file mode 100644[m
+[1mindex 0000000..9bd966f[m
+[1m--- /dev/null[m
+[1m+++ b/TODO.txt[m
+[36m@@ -0,0 +1,4 @@[m
+[32m+[m[32madd KMS to S3 - https://github.com/wandb/terraform-aws-wandb/blob/main/modules/file_storage/main.tf#L13[m
+[32m+[m[32muse hardened AMI for EKS node[m
+[32m+[m[32mharden IAM permissions[m
+[32m+[m[32mask about TLS for lB connection??[m
+[1mdiff --git a/__config__.tf b/__config__.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..76fca84[m
+[1m--- /dev/null[m
+[1m+++ b/__config__.tf[m
+[36m@@ -0,0 +1,8 @@[m
+[32m+[m[32mterraform {[m
+[32m+[m[32m  backend local {}[m
+[32m+[m[32m  required_version = "~> 0.12.25"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mprovider "aws" {[m
+[32m+[m[32m  region = var.aws_region[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/__output__.tf b/__output__.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..91040d7[m
+[1m--- /dev/null[m
+[1m+++ b/__output__.tf[m
+[36m@@ -0,0 +1,3 @@[m
+[32m+[m[32moutput "url" {[m
+[32m+[m[32m  value = "http://${module.infra.lb_dns_name}"[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/__var__.tf b/__var__.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f68325c[m
+[1m--- /dev/null[m
+[1m+++ b/__var__.tf[m
+[36m@@ -0,0 +1,72 @@[m
+[32m+[m[32mvariable "aws_region" {[m
+[32m+[m[32m  type    = string[m
+[32m+[m[32m  default = "us-east-1"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "license" {[m
+[32m+[m[32m  type    = string[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m#### TODO #####[m
+[32m+[m[32m## Need to store in TFE vault ##[m
+[32m+[m[32m#### TODO ####[m
+[32m+[m
+[32m+[m[32mvariable "global_environment_name" {[m
+[32m+[m[32m  type    = string[m
+[32m+[m[32m  default = "cv-wandb-rnd-deploy"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "wandb_version" {[m
+[32m+[m[32m  description = "The version of wandb to deploy."[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m  default     = "0.9.43"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m####[m
+[32m+[m[32m## For Socure, these variables should not be used. Everything will be in a private subnet ##[m
+[32m+[m[32m####[m
+[32m+[m
+[32m+[m[32m# variable "deployment_is_private" {[m
+[32m+[m[32m#   description = "If true, the load balancer will be placed in a private subnet."[m
+[32m+[m[32m#   type        = bool[m
+[32m+[m[32m#   default     = true[m
+[32m+[m[32m# }[m
+[32m+[m
+[32m+[m[32m# variable "kubernetes_api_is_private" {[m
+[32m+[m[32m#   description = "If true, the kubernetes API server endpoint will be private."[m
+[32m+[m[32m#   type        = bool[m
+[32m+[m[32m#   default     = true[m
+[32m+[m[32m# }[m
+[32m+[m
+[32m+[m[32mvariable "wandb_vpc_id" {[m
+[32m+[m[32m  description = "VPC where WandDB will be deployed"[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m  default     = "vpc-085cc04fc6e325417"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "private_subnet_ids" {[m
+[32m+[m[32m  description = "Private subnets where the EKS cluster and load balancers will be deployed"[m
+[32m+[m[32m  type        = list(string)[m
+[32m+[m[32m  default     = ["subnet-09d9aac754fe6df12", "subnet-0a90797fb0a85e347", "subnet-03f3b5024a858526a"][m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "private_rds_subnet_ids" {[m
+[32m+[m[32m  description = "Private subnets where the RDS instances will be deployed"[m
+[32m+[m[32m  type        = list(string)[m
+[32m+[m[32m  default     = ["subnet-09466e49d16de6a53", "subnet-066f9a50c2034e34b"][m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m[32mvariable "wandb_ingress_ips" {[m
+[32m+[m[32m  description = "IP ranges to allow 80/443 connections to wandb load balancers and 443 connection to EKS cluster"[m
+[32m+[m[32m  type        = list(string)[m
+[32m+[m[32m  default     = ["10.222.0.0/23", "10.10.0.0/16","10.240.0.0/16"][m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m#### TODO #####[m
+[32m+[m[32m## Need to store in TFE vault ##[m
+[32m+[m[32m#### TODO ####[m
+[32m+[m[32mvariable "db_password" {[m
+[32m+[m[32m  description = "Password for WandDB instance"[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/infra/__config__.tf b/infra/__config__.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..dd116fb[m
+[1m--- /dev/null[m
+[1m+++ b/infra/__config__.tf[m
+[36m@@ -0,0 +1,4 @@[m
+[32m+[m
+[32m+[m[32mprovider "aws" {[m
+[32m+[m[32m  region = var.aws_region[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/infra/__var__.tf b/infra/__var__.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..6ee75b7[m
+[1m--- /dev/null[m
+[1m+++ b/infra/__var__.tf[m
+[36m@@ -0,0 +1,34 @@[m
+[32m+[m[32mvariable "global_environment_name" {[m
+[32m+[m[32m  description = "A globally unique environment name for S3 buckets."[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "aws_region" {[m
+[32m+[m[32m  description = "The AWS region in which to place the resources."[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "db_password" {[m
+[32m+[m[32m  description = "Password for the database instance. NOTE: Database is not publicly accessible by default."[m
+[32m+[m[32m  type        = string[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "wandb_vpc_id" {[m
+[32m+[m[32m    description = "VPC where WandDB will be deployed"[m
+[32m+[m[32m    type = string[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "private_subnet_ids" {[m
+[32m+[m[32m    description = "Private subnets where the EKS cluster and load balancers will be deployed"[m
+[32m+[m[32m    type = list(string)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "private_rds_subnet_ids" {[m
+[32m+[m[32m    description = "Private subnets where the RDS instances will be deployed"[m
+[32m+[m[32m    type = list(string)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvariable "wandb_ingress_ips" {[m
+[32m+[m[32m    description = "IP ranges to allow 80/443 connections to wandb load balancers and 443 connection to EKS cluster"[m
+[32m+[m[32m    type = list(string)[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/infra/infra.tf b/infra/infra.tf[m
+[1mindex 463eeee..061dcaf 100644[m
+[1m--- a/infra/infra.tf[m
+[1m+++ b/infra/infra.tf[m
+[36m@@ -1,62 +1,4 @@[m
+[31m-terraform {[m
+[31m-  required_providers {[m
+[31m-    aws = "~> 3.37.0"[m
+[31m-  }[m
+[31m-}[m
+ [m
+[31m-provider "aws" {[m
+[31m-  region = var.aws_region[m
+[31m-}[m
+[31m-[m
+[31m-##########################################[m
+[31m-# Variables[m
+[31m-##########################################[m
+[31m-[m
+[31m-variable "global_environment_name" {[m
+[31m-  description = "A globally unique environment name for S3 buckets."[m
+[31m-  type        = string[m
+[31m-}[m
+[31m-[m
+[31m-variable "aws_region" {[m
+[31m-  description = "The AWS region in which to place the resources."[m
+[31m-  type        = string[m
+[31m-  default     = "us-west-2"[m
+[31m-}[m
+[31m-[m
+[31m-variable "db_password" {[m
+[31m-  description = "Password for the database instance. NOTE: Database is not publicly accessible by default."[m
+[31m-  type        = string[m
+[31m-}[m
+[31m-[m
+[31m-variable "deployment_is_private" {[m
+[31m-  description = "If true, the load balancer will be placed in a private subnet, and the kubernetes API server endpoint will be private."[m
+[31m-  type        = bool[m
+[31m-  default     = false[m
+[31m-}[m
+[31m-[m
+[31m-variable "kubernetes_api_is_private" {[m
+[31m-  description = "If true, the kubernetes API server endpoint will be private."[m
+[31m-  type        = bool[m
+[31m-  default     = false[m
+[31m-}[m
+[31m-[m
+[31m-variable "vpc_cidr_block" {[m
+[31m-  description = "CIDR block for the VPC."[m
+[31m-  type        = string[m
+[31m-  default     = "10.10.0.0/16"[m
+[31m-}[m
+[31m-[m
+[31m-variable "public_subnet_cidr_blocks" {[m
+[31m-  description = "CIDR blocks for the public VPC subnets. Should be a list of 2 CIDR blocks."[m
+[31m-  type        = list(string)[m
+[31m-  default     = ["10.10.0.0/24", "10.10.1.0/24"][m
+[31m-}[m
+[31m-[m
+[31m-variable "private_subnet_cidr_blocks" {[m
+[31m-  description = "CIDR blocks for the private VPC subnets. Should be a list of 2 CIDR blocks."[m
+[31m-  type        = list(string)[m
+[31m-  default     = ["10.10.2.0/24", "10.10.3.0/24"][m
+[31m-}[m
+ [m
+ ##########################################[m
+ # Data[m
+[36m@@ -68,122 +10,6 @@[m [mdata "aws_region" "current" {[m
+ data "aws_availability_zones" "available" {[m
+ }[m
+ [m
+[31m-##########################################[m
+[31m-# VPC resources[m
+[31m-##########################################[m
+[31m-[m
+[31m-resource "aws_vpc" "wandb" {[m
+[31m-  cidr_block           = var.vpc_cidr_block[m
+[31m-  enable_dns_support   = true[m
+[31m-  enable_dns_hostnames = true[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    "Name"                        = "wandb"[m
+[31m-    "kubernetes.io/cluster/wandb" = "shared"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_subnet" "wandb_public" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  availability_zone       = data.aws_availability_zones.available.names[count.index][m
+[31m-  cidr_block              = var.public_subnet_cidr_blocks[count.index][m
+[31m-  vpc_id                  = aws_vpc.wandb.id[m
+[31m-  map_public_ip_on_launch = true[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    "Name"                        = "wandb-public-${count.index}"[m
+[31m-    "kubernetes.io/cluster/wandb" = "shared"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_subnet" "wandb_private" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  availability_zone = data.aws_availability_zones.available.names[count.index][m
+[31m-  cidr_block        = var.private_subnet_cidr_blocks[count.index][m
+[31m-  vpc_id            = aws_vpc.wandb.id[m
+[31m-[m
+[31m-  depends_on = [aws_subnet.wandb_public][m
+[31m-[m
+[31m-  tags = {[m
+[31m-    "Name"                        = "wandb-private-${count.index}"[m
+[31m-    "kubernetes.io/cluster/wandb" = "shared"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_eip" "wandb" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  vpc = true[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    Name = "wandb-eip-${count.index}"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_nat_gateway" "wandb" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  allocation_id = aws_eip.wandb[count.index].id[m
+[31m-  subnet_id     = aws_subnet.wandb_public[count.index].id[m
+[31m-[m
+[31m-  depends_on = [aws_internet_gateway.wandb][m
+[31m-[m
+[31m-  tags = {[m
+[31m-    Name = "wandb-nat-gateway-${count.index}"[m
+[31m-  }[m
+[31m-}[m
+[31m-resource "aws_internet_gateway" "wandb" {[m
+[31m-  vpc_id = aws_vpc.wandb.id[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    Name = "wandb-gateway"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_route_table" "wandb_public" {[m
+[31m-  vpc_id = aws_vpc.wandb.id[m
+[31m-[m
+[31m-  route {[m
+[31m-    cidr_block = "0.0.0.0/0"[m
+[31m-    gateway_id = aws_internet_gateway.wandb.id[m
+[31m-  }[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    Name = "wandb-route-table-public"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_route_table_association" "wandb_public" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  subnet_id      = aws_subnet.wandb_public[count.index].id[m
+[31m-  route_table_id = aws_route_table.wandb_public.id[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_route_table" "wandb_private" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  vpc_id = aws_vpc.wandb.id[m
+[31m-[m
+[31m-  route {[m
+[31m-    cidr_block     = "0.0.0.0/0"[m
+[31m-    nat_gateway_id = aws_nat_gateway.wandb[count.index].id[m
+[31m-  }[m
+[31m-[m
+[31m-  tags = {[m
+[31m-    Name = "wandb-route-table-private-${count.index}"[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-resource "aws_route_table_association" "wandb_private" {[m
+[31m-  count = 2[m
+[31m-[m
+[31m-  subnet_id      = aws_subnet.wandb_private[count.index].id[m
+[31m-  route_table_id = aws_route_table.wandb_private[count.index].id[m
+[31m-}[m
+[31m-[m
+ ##########################################[m
+ # EKS resources[m
+ ##########################################[m
+[36m@@ -191,7 +17,7 @@[m [mresource "aws_route_table_association" "wandb_private" {[m
+ resource "aws_security_group" "eks_master" {[m
+   name        = "wandb-eks-master"[m
+   description = "Cluster communication with worker nodes"[m
+[31m-  vpc_id      = aws_vpc.wandb.id[m
+[32m+[m[32m  vpc_id      = var.wandb_vpc_id[m
+ [m
+   egress {[m
+     from_port   = 0[m
+[36m@@ -212,9 +38,9 @@[m [mresource "aws_eks_cluster" "wandb" {[m
+ [m
+   vpc_config {[m
+     endpoint_private_access = true[m
+[31m-    endpoint_public_access  = ! var.kubernetes_api_is_private[m
+[32m+[m[32m    endpoint_public_access  = false[m
+     security_group_ids      = [aws_security_group.eks_master.id][m
+[31m-    subnet_ids              = aws_subnet.wandb_private[*].id[m
+[32m+[m[32m    subnet_ids              = var.private_subnet_ids[m
+   }[m
+ [m
+   depends_on = [[m
+[36m@@ -240,7 +66,7 @@[m [moutput "eks_cert_data" {[m
+ }[m
+ [m
+ resource "aws_security_group_rule" "eks_worker_ingress" {[m
+[31m-  description              = "Allow comntainer NodePort service to receive load balancer traffic"[m
+[32m+[m[32m  description              = "Allow container NodePort service to receive load balancer traffic"[m
+   protocol                 = "tcp"[m
+   security_group_id        = aws_eks_cluster.wandb.vpc_config[0].cluster_security_group_id[m
+   source_security_group_id = aws_security_group.wandb_alb.id[m
+[36m@@ -249,6 +75,16 @@[m [mresource "aws_security_group_rule" "eks_worker_ingress" {[m
+   type                     = "ingress"[m
+ }[m
+ [m
+[32m+[m[32mresource "aws_security_group_rule" "wandb_ingress" {[m
+[32m+[m[32m  description = "Allow internal traffic"[m
+[32m+[m[32m  protocol = "tcp"[m
+[32m+[m[32m  security_group_id = aws_eks_cluster.wandb.vpc_config[0].cluster_security_group_id[m
+[32m+[m[32m  from_port = 443[m
+[32m+[m[32m  to_port = 443[m
+[32m+[m[32m  cidr_blocks = var.wandb_ingress_ips[m
+[32m+[m[32m  type = "ingress"[m
+[32m+[m[32m}[m
+[32m+[m
+ resource "aws_iam_role" "wandb_cluster_role" {[m
+   name = "wandb-cluster-role"[m
+ [m
+[36m@@ -345,7 +181,7 @@[m [mresource "aws_iam_policy" "wandb_node_sqs_policy" {[m
+         "Effect": "Allow",[m
+         "Action": "sqs:*",[m
+         "Resource": [[m
+[31m-          "${aws_sqs_queue.file_metadata.arn}"[m
+[32m+[m[32m          "${aws_sqs_queue.file_metadata.arn}","*"[m
+         ][m
+     }[m
+   ][m
+[36m@@ -362,7 +198,7 @@[m [mresource "aws_eks_node_group" "eks_worker_node_group" {[m
+   cluster_name    = aws_eks_cluster.wandb.name[m
+   node_group_name = "wandb-eks-node-group"[m
+   node_role_arn   = aws_iam_role.wandb_node_role.arn[m
+[31m-  subnet_ids      = aws_subnet.wandb_private[*].id[m
+[32m+[m[32m  subnet_ids      = var.private_subnet_ids[m
+ [m
+   scaling_config {[m
+     desired_size = 1[m
+[36m@@ -389,20 +225,20 @@[m [mresource "aws_eks_node_group" "eks_worker_node_group" {[m
+ resource "aws_security_group" "wandb_alb" {[m
+   name        = "wandb-alb-sg"[m
+   description = "Allow http(s) traffic to wandb"[m
+[31m-  vpc_id      = aws_vpc.wandb.id[m
+[32m+[m[32m  vpc_id      = var.wandb_vpc_id[m
+ [m
+   ingress {[m
+     from_port   = 443[m
+     to_port     = 443[m
+     protocol    = "tcp"[m
+[31m-    cidr_blocks = ["0.0.0.0/0"][m
+[32m+[m[32m    cidr_blocks = var.wandb_ingress_ips[m
+   }[m
+ [m
+   ingress {[m
+     from_port   = 80[m
+     to_port     = 80[m
+     protocol    = "tcp"[m
+[31m-    cidr_blocks = ["0.0.0.0/0"][m
+[32m+[m[32m    cidr_blocks = var.wandb_ingress_ips[m
+   }[m
+ [m
+   egress {[m
+[36m@@ -419,10 +255,10 @@[m [mresource "aws_security_group" "wandb_alb" {[m
+ [m
+ resource "aws_lb" "wandb" {[m
+   name               = "wandb-alb"[m
+[31m-  internal           = var.deployment_is_private[m
+[32m+[m[32m  internal           = true[m
+   load_balancer_type = "application"[m
+   security_groups    = [aws_security_group.wandb_alb.id][m
+[31m-  subnets            = var.deployment_is_private ? aws_subnet.wandb_private[*].id : aws_subnet.wandb_public[*].id[m
+[32m+[m[32m  subnets            = var.private_subnet_ids[m
+ }[m
+ [m
+ output "lb_dns_name" {[m
+[36m@@ -433,7 +269,7 @@[m [mresource "aws_lb_target_group" "wandb_tg" {[m
+   name     = "wandb-alb-tg"[m
+   port     = 32543[m
+   protocol = "HTTP"[m
+[31m-  vpc_id   = aws_vpc.wandb.id[m
+[32m+[m[32m  vpc_id   = var.wandb_vpc_id[m
+ [m
+   health_check {[m
+     protocol            = "HTTP"[m
+[36m@@ -467,9 +303,9 @@[m [mresource "aws_autoscaling_attachment" "wandb" {[m
+ [m
+ resource "aws_sqs_queue" "file_metadata" {[m
+   name = "wandb-file-metadata"[m
+[31m-[m
+   # enable long-polling[m
+   receive_wait_time_seconds = 10[m
+[32m+[m[32m  kms_master_key_id = "alias/aws/sqs"[m
+ }[m
+ [m
+ output "sqs_queue_name" {[m
+[36m@@ -503,6 +339,8 @@[m [mdata "aws_iam_policy_document" "file_metadata_queue_policy" {[m
+ [m
+ resource "aws_sns_topic" "file_metadata" {[m
+   name = "wandb-file-metadata-topic"[m
+[32m+[m[32m  kms_master_key_id = "alias/aws/sns"[m
+[32m+[m
+ }[m
+ [m
+ resource "aws_sns_topic_policy" "file_metadata_topic_policy" {[m
+[36m@@ -563,6 +401,15 @@[m [mresource "aws_s3_bucket" "file_storage" {[m
+   }[m
+ }[m
+ [m
+[32m+[m[32mresource "aws_s3_bucket_public_access_block" "file_storage_public_access_block" {[m
+[32m+[m[32m  bucket = aws_s3_bucket.file_storage.id[m
+[32m+[m
+[32m+[m[32m  block_public_acls   = true[m
+[32m+[m[32m  block_public_policy = true[m
+[32m+[m[32m  ignore_public_acls = true[m
+[32m+[m[32m  restrict_public_buckets = true[m
+[32m+[m[32m}[m
+[32m+[m
+ output "s3_bucket_name" {[m
+   value = aws_s3_bucket.file_storage.bucket[m
+ }[m
+[36m@@ -586,7 +433,7 @@[m [mresource "aws_s3_bucket_notification" "file_metadata_sns" {[m
+ [m
+ resource "aws_db_subnet_group" "metadata_subnets" {[m
+   name       = "wandb-db-subnets"[m
+[31m-  subnet_ids = aws_subnet.wandb_private[*].id[m
+[32m+[m[32m  subnet_ids = var.private_rds_subnet_ids[m
+ }[m
+ [m
+ resource "aws_rds_cluster" "metadata_cluster" {[m
+[36m@@ -625,7 +472,7 @@[m [moutput "rds_connection_string" {[m
+ resource "aws_security_group" "metadata_store" {[m
+   name        = "wandb-metadata-store"[m
+   description = "Allow inbound traffic from workers to metadata store"[m
+[31m-  vpc_id      = aws_vpc.wandb.id[m
+[32m+[m[32m  vpc_id      = var.wandb_vpc_id[m
+ [m
+   tags = {[m
+     Name = "wandb-metadata-store"[m
+[1mdiff --git a/local.tf b/local.tf[m
+[1mdeleted file mode 100644[m
+[1mindex 6ffa815..0000000[m
+[1m--- a/local.tf[m
+[1m+++ /dev/null[m
+[36m@@ -1,93 +0,0 @@[m
+[31m-terraform {[m
+[31m-  required_version = "~> 0.12.25"[m
+[31m-  backend "local" {}[m
+[31m-}[m
+[31m-[m
+[31m-variable "global_environment_name" {[m
+[31m-  description = "A globally unique environment name for S3 buckets."[m
+[31m-  type        = string[m
+[31m-}[m
+[31m-[m
+[31m-variable "aws_region" {[m
+[31m-  description = "The AWS region in which to place the resources."[m
+[31m-  type        = string[m
+[31m-  default     = "us-west-2"[m
+[31m-}[m
+[31m-[m
+[31m-variable "license" {[m
+[31m-  description = "The license string for your local instance."[m
+[31m-  type        = string[m
+[31m-}[m
+[31m-[m
+[31m-variable "db_password" {[m
+[31m-  description = "Password for the database instance. NOTE: Database is not publicly accessible by default."[m
+[31m-  default     = "wandb_root_password"[m
+[31m-  type        = string[m
+[31m-}[m
+[31m-[m
+[31m-variable "wandb_version" {[m
+[31m-  description = "The version of wandb to deploy."[m
+[31m-  type        = string[m
+[31m-  default     = "0.9.42"[m
+[31m-}[m
+[31m-[m
+[31m-variable "deployment_is_private" {[m
+[31m-  description = "If true, the load balancer will be placed in a private subnet."[m
+[31m-  type        = bool[m
+[31m-  default     = false[m
+[31m-}[m
+[31m-[m
+[31m-variable "kubernetes_api_is_private" {[m
+[31m-  description = "If true, the kubernetes API server endpoint will be private."[m
+[31m-  type        = bool[m
+[31m-  default     = false[m
+[31m-}[m
+[31m-variable "vpc_cidr_block" {[m
+[31m-  description = "CIDR block for the VPC."[m
+[31m-  type        = string[m
+[31m-  default     = "10.10.0.0/16"[m
+[31m-}[m
+[31m-[m
+[31m-variable "public_subnet_cidr_blocks" {[m
+[31m-  description = "CIDR blocks for the public VPC subnets. Should be a list of 2 CIDR blocks."[m
+[31m-  type        = list(string)[m
+[31m-  default     = ["10.10.0.0/24", "10.10.1.0/24"][m
+[31m-}[m
+[31m-[m
+[31m-variable "private_subnet_cidr_blocks" {[m
+[31m-  description = "CIDR blocks for the private VPC subnets. Should be a list of 2 CIDR blocks."[m
+[31m-  type        = list(string)[m
+[31m-  default     = ["10.10.2.0/24", "10.10.3.0/24"][m
+[31m-}[m
+[31m-[m
+[31m-[m
+[31m-module "infra" {[m
+[31m-  source = "./infra"[m
+[31m-[m
+[31m-  global_environment_name    = var.global_environment_name[m
+[31m-  aws_region                 = var.aws_region[m
+[31m-  db_password                = var.db_password[m
+[31m-  deployment_is_private      = var.deployment_is_private[m
+[31m-  kubernetes_api_is_private  = var.kubernetes_api_is_private[m
+[31m-  vpc_cidr_block             = var.vpc_cidr_block[m
+[31m-  public_subnet_cidr_blocks  = var.public_subnet_cidr_blocks[m
+[31m-  private_subnet_cidr_blocks = var.private_subnet_cidr_blocks[m
+[31m-}[m
+[31m-[m
+[31m-module "kube" {[m
+[31m-  source = "./kube"[m
+[31m-[m
+[31m-  license                    = var.license[m
+[31m-  wandb_version              = var.wandb_version[m
+[31m-  kube_cluster_endpoint      = module.infra.eks_cluster_endpoint[m
+[31m-  kube_cert_data             = module.infra.eks_cert_data[m
+[31m-  file_storage_bucket_name   = module.infra.s3_bucket_name[m
+[31m-  file_storage_bucket_region = module.infra.s3_bucket_region[m
+[31m-  file_metadata_queue_name   = module.infra.sqs_queue_name[m
+[31m-  database_endpoint          = module.infra.rds_connection_string[m
+[31m-  token                      = module.infra.eks_cluster_token[m
+[31m-}[m
+[31m-[m
+[31m-output "url" {[m
+[31m-  value = "http://${module.infra.lb_dns_name}"[m
+[31m-}[m
+[1mdiff --git a/main.tf b/main.tf[m
+[1mnew file mode 100644[m
+[1mindex 0000000..500fb47[m
+[1m--- /dev/null[m
+[1m+++ b/main.tf[m
+[36m@@ -0,0 +1,28 @@[m
+[32m+[m[32mmodule "infra" {[m
+[32m+[m[32m  source = "./infra"[m
+[32m+[m
+[32m+[m[32m  global_environment_name = var.global_environment_name[m
+[32m+[m[32m  aws_region              = var.aws_region[m
+[32m+[m[32m  db_password             = var.db_password[m
+[32m+[m[32m  wandb_vpc_id            = var.wandb_vpc_id[m
+[32m+[m[32m  private_subnet_ids      = var.private_subnet_ids[m
+[32m+[m[32m  private_rds_subnet_ids  = var.private_rds_subnet_ids[m
+[32m+[m[32m  wandb_ingress_ips       = var.wandb_ingress_ips[m
+[32m+[m[32m  #vpc_cidr_block             = var.vpc_cidr_block[m
+[32m+[m[32m  #public_subnet_cidr_blocks  = var.public_subnet_cidr_blocks[m
+[32m+[m[32m  #private_subnet_cidr_blocks = var.private_subnet_cidr_blocks[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mmodule "kube" {[m
+[32m+[m[32m  source = "./kube"[m
+[32m+[m
+[32m+[m[32m  license                    = var.license[m
+[32m+[m[32m  wandb_version              = var.wandb_version[m
+[32m+[m[32m  kube_cluster_endpoint      = module.infra.eks_cluster_endpoint[m
+[32m+[m[32m  kube_cert_data             = module.infra.eks_cert_data[m
+[32m+[m[32m  file_storage_bucket_name   = module.infra.s3_bucket_name[m
+[32m+[m[32m  file_storage_bucket_region = module.infra.s3_bucket_region[m
+[32m+[m[32m  file_metadata_queue_name   = module.infra.sqs_queue_name[m
+[32m+[m[32m  database_endpoint          = module.infra.rds_connection_string[m
+[32m+[m[32m  token                      = module.infra.eks_cluster_token[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/terraform.tfvars b/terraform.tfvars[m
+[1mdeleted file mode 100644[m
+[1mindex ea48988..0000000[m
+[1m--- a/terraform.tfvars[m
+[1m+++ /dev/null[m
+[36m@@ -1,2 +0,0 @@[m
+[31m-global_environment_name = "computer_vision_socure"[m
+[31m-license = "eyJhbGciOiJSUzI1NiIsImtpZCI6InUzaHgyQjQyQWhEUXM1M0xQY09yNnZhaTdoSlduYnF1bTRZTlZWd1VwSWM9In0.eyJjb25jdXJyZW50QWdlbnRzIjoxMCwiZGVwbG95bWVudElkIjoiNWQ1M2NkNDUtOWYxOC00ZTBjLWIxODgtODRkNmJmNzk0YjViIiwibWF4VGVhbXMiOjcsIm1heFVzZXJzIjo3LCJtYXhTdG9yYWdlR2IiOjEwMDAwMDAwMCwidHJpYWwiOmZhbHNlLCJleHBpcmVzQXQiOiIyMDIyLTEwLTMwVDIxOjI3OjAyLjI5MFoiLCJmbGFncyI6WyJTQ0FMQUJMRSIsIm15c3FsIiwiczMiLCJyZWRpcyIsIk5PVElGSUNBVElPTlMiLCJzbGFjayIsIm5vdGlmaWNhdGlvbnMiXSwiYWNjZXNzS2V5IjoiOGE2YTk5NjUtZmI0OS00NDQwLWFmZWMtYTQ3NDJkOGE3YjdmIiwic2VhdHMiOjcsInRlYW1zIjo3LCJzdG9yYWdlR2lncyI6MTAwMDAwMDAwLCJleHAiOjE2NjcxNjUyMjJ9.HQDwtLW4BG34uy-FuFBeFITva01rYA6M9Irv0qhWTLpS3irM_N50LLrMZNhjXZKmVLaOenaFntPTDdVVjrLOmkYz-J4_EOyJGQZiLGBiQ3-f0sfh78-yIFbu6mh1PlF0VQOaaE6gnzX5S9PDeZX9ZbhXNWARPP8fTgpGKC5bkImc-_Ic-kpBEeY9y7J4Th0KiMAjx8rEdQJGx5ge4sggQLzLYVv_YbNx4fTYuB32_u6t7-k6guaccUp2Yvdoj6rxedFiUcYL8l1cCwhkD7GRQKZ8-3EiEL9VMt_3qh5iRpHE0AI5wmF-0MtF8_0_DiGKMicQOEzf0ZIkuz1gGCV_yw"[m
+\ No newline at end of file[m

@@ -1,0 +1,4 @@
+add KMS to S3 - https://github.com/wandb/terraform-aws-wandb/blob/main/modules/file_storage/main.tf#L13
+use hardened AMI for EKS node
+harden IAM permissions
+ask about TLS for lB connection??
